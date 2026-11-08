@@ -1,7 +1,7 @@
 import os
 import pandas as pd 
 
-folder_path = "./temp_data" #заменить на ./data
+folder_path = "./data" #заменить на ./data
 
 # проверка на существование пути
 if not os.path.exists(folder_path):
@@ -61,6 +61,9 @@ print(f"✓ Валидных файлов: {len(valid_files)}\n" + "\n".join(val
 # чтение валидных файлов
 data_frames = []
 
+# Наш золотой стандарт (эталон)
+required_cols = {"product", "quantity", "price"}
+
 for name in valid_files:
     full_path = os.path.join(folder_path, name)
 
@@ -70,7 +73,56 @@ for name in valid_files:
         print(f"⚠ Не удалось прочитать {name}: {e}")
         continue
 
+
+    # внедрение проверки на отсутствие обязательных столбцов
+    current_cols = set(df.columns)
+
+    if not required_cols.issubset(current_cols):
+        # находим каких именно не хватает
+        missing = required_cols - current_cols
+        print(f"⚠ Файл {name} пропущен. Отсутствуют обязательные колонки: {missing}")
+        continue
+
+
+    # внедрение проверки на пустые значения
+    # Список колонок, где не должно быть пустоты
+    cols_to_check = ["product", "quantity", "price"]
+    is_nan_table = df[cols_to_check].isna() # превращает в таблицу из True(NaN)/False
+    row_has_nan = is_nan_table.any(axis=1) # превращем таблицу в один столбец из True(NaN)/False
+    nan_count = row_has_nan.sum() # суммируем полуенный столбец чтобы узнать сколько в нем True
+
+    if nan_count > 0:
+        print(f"⚠ В файле {name} пропущено строк с пустыми значениями: {nan_count}")
+
+        # оставляем только строки без пустот (~ инвертирует True/False)
+        df = df[~row_has_nan].copy()
+
+
+    # внедрение проверки на некорректные цены или количества
+    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce") # errors="coerce" превращает в NaN все что не смогла превратить в число
+    df["price"] = pd.to_numeric(df["price"], errors="coerce")
+
+    quantity_is_nan = df["quantity"].isna()
+    quantity_is_less_or_equal_zero = (df["quantity"] <= 0)
+    bad_quantity = quantity_is_nan | quantity_is_less_or_equal_zero
+
+    price_is_nan = df["price"].isna()
+    price_is_less_or_equal_zero = (df["price"] <= 0)
+    bad_price = price_is_nan | price_is_less_or_equal_zero
+
+    bad_rows = bad_quantity | bad_price
+    bad_count = bad_rows.sum()
+
+    if bad_count > 0:
+        print(f"⚠ В файле {name} пропущено строк с некорректными/отрицательными значениями: {bad_count}")
+
+        df = df[~bad_rows].copy()
+
+
     data_frames.append(df)
+
+if not data_frames:
+    raise ValueError("Ни в одном файле не найдены обязательные колонки (product, quantity, price).")
 
 print(f"Прочитано файлов: {len(data_frames)}")
 
@@ -101,6 +153,8 @@ sorted_report = report.sort_values(by="total_revenue", ascending=False)
 best_product = sorted_report.iloc[0]
 print(f"Самый прибыльный товар: {best_product['product']} (выручка: {best_product['total_revenue']:.2f})")
 
+
+
 # Создаем маленькую табличку с одной строкой "ИТОГО"
 total_row = pd.DataFrame([{
     "product": "ИТОГО",
@@ -110,6 +164,8 @@ total_row = pd.DataFrame([{
 
 # Приклеиваем эту строку в самый низ нашей таблицы report
 final_report = pd.concat([report, total_row], ignore_index=True)
+
+final_report["total_revenue"] = final_report["total_revenue"].round(2)
 
 os.makedirs("reports", exist_ok=True)
 final_report.to_csv("reports/sales_report.csv", index=False)
