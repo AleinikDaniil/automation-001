@@ -68,7 +68,7 @@ for name in valid_files:
     full_path = os.path.join(folder_path, name)
 
     try:
-        df = pd.read_csv(full_path)
+        df = pd.read_csv(full_path, on_bad_lines='skip')
     except Exception as e:
         print(f"⚠ Не удалось прочитать {name}: {e}")
         continue
