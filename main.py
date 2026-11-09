@@ -2,6 +2,7 @@ import os
 import pandas as pd 
 
 folder_path = "./data" #заменить на ./data
+all_errors = []
 
 # проверка на существование пути
 if not os.path.exists(folder_path):
@@ -80,7 +81,9 @@ for name in valid_files:
     if not required_cols.issubset(current_cols):
         # находим каких именно не хватает
         missing = required_cols - current_cols
-        print(f"⚠ Файл {name} пропущен. Отсутствуют обязательные колонки: {missing}")
+        error_msg = f"Файл '{name}': пропущен весь файл. Причина: отсутствуют колонки {missing}."
+        all_errors.append(error_msg)
+        print(f"⚠ {error_msg}")
         continue
 
 
@@ -92,14 +95,60 @@ for name in valid_files:
     nan_count = row_has_nan.sum() # суммируем полуенный столбец чтобы узнать сколько в нем True
 
     if nan_count > 0:
-        print(f"⚠ В файле {name} пропущено строк с пустыми значениями: {nan_count}")
+        print(f"\n⚠ В файле {name} найдено строк с пустыми значениями: {nan_count}")
+
+        bad_indices = df[row_has_nan].index
+
+        for idx in bad_indices:
+            row_data = df.loc[idx]
+
+            product_val = row_data.get("product", "НЕТ")
+            quantity_val = row_data.get("quantity", "НЕТ")
+            price_val = row_data.get("price", "НЕТ")
+
+            empty_fields = []
+            if pd.isna(row_data.get("product")):
+                empty_fields.append("product")
+            if pd.isna(row_data.get("quantity")):
+                empty_fields.append("quantity")
+            if pd.isna(row_data.get("price")):
+                empty_fields.append("price")
+
+            reason = f"пустые поля: {', '.join(empty_fields)}"
+
+            print(f"   ❌ Строка {idx}: Товар '{product_val}', Кол-во: {quantity_val}, Цена: {price_val} | Причина: {reason}")
+
+            error_msg = f"Файл '{name}', строка {idx}: пустые поля ({', '.join(empty_fields)}). Данные: {row_data.to_dict()}"
+            all_errors.append(error_msg)
 
         # оставляем только строки без пустот (~ инвертирует True/False)
         df = df[~row_has_nan].copy()
 
+        df["product"] = df["product"].astype(str).str.strip()
+    empty_product = (df["product"] == "")
 
-    # внедрение проверки на некорректные цены или количества
-    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce") # errors="coerce" превращает в NaN все что не смогла превратить в число
+    if empty_product.any():
+        print(f"\n⚠ В файле {name} найдено строк с пустым названием товара: {empty_product.sum()}")
+        
+        # 1. СНАЧАЛА находим индексы и выводим их в лог
+        bad_indices = df[empty_product].index
+        
+        for idx in bad_indices:
+            row_data = df.loc[idx]
+            quantity_val = row_data.get("quantity", "НЕТ")
+            price_val = row_data.get("price", "НЕТ")
+            
+            print(f"   ❌ Строка {idx}: Товар (пробелы), Кол-во: {quantity_val}, Цена: {price_val} | Причина: название товара состоит из пробелов")
+            
+            error_msg = f"Файл '{name}', строка {idx}: пустое название товара (пробелы). Данные: {row_data.to_dict()}"
+            all_errors.append(error_msg)
+
+        # 2. ТОЛЬКО ПОТОМ удаляем строки
+        df = df[~empty_product].copy()
+
+
+        # внедрение проверки на некорректные цены или количества
+    df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
 
     quantity_is_nan = df["quantity"].isna()
@@ -114,8 +163,39 @@ for name in valid_files:
     bad_count = bad_rows.sum()
 
     if bad_count > 0:
-        print(f"⚠ В файле {name} пропущено строк с некорректными/отрицательными значениями: {bad_count}")
+        print(f"\n⚠ В файле {name} найдено строк с некорректными/отрицательными значениями: {bad_count}")
+        
+        # 1. СНАЧАЛА находим индексы и пишем лог
+        bad_indices = df[bad_rows].index
+        
+        for idx in bad_indices:
+            row_data = df.loc[idx]
+            product_val = row_data.get("product", "НЕТ")
+            quantity_val = row_data.get("quantity", "НЕТ")
+            price_val = row_data.get("price", "НЕТ")
+            
+            # Определяем точную причину для этой конкретной строки
+            reasons = []
+            # Проверяем quantity
+            if pd.isna(quantity_val):
+                reasons.append("quantity не является числом")
+            elif quantity_val <= 0:
+                reasons.append(f"quantity <= 0 ({quantity_val})")
+                
+            # Проверяем price
+            if pd.isna(price_val):
+                reasons.append("price не является числом")
+            elif price_val <= 0:
+                reasons.append(f"price <= 0 ({price_val})")
+            
+            reason_text = " | ".join(reasons)
+            
+            print(f"   ❌ Строка {idx}: Товар '{product_val}', Кол-во: {quantity_val}, Цена: {price_val} | Причина: {reason_text}")
+            
+            error_msg = f"Файл '{name}', строка {idx}: {reason_text}. Данные: {row_data.to_dict()}"
+            all_errors.append(error_msg)
 
+        # 2. ТОЛЬКО ПОТОМ удаляем строки
         df = df[~bad_rows].copy()
 
 
@@ -130,7 +210,7 @@ for i, df in enumerate(data_frames):
     print(f"  Файл {i+1}: {len(df)} строк, {len(df.columns)} колонок")
 
 # обьединение в одну таблицу
-final_df = pd.concat(data_frames, ignore_index="True")
+final_df = pd.concat(data_frames, ignore_index=True)
 print(f"✓ Всего строк в объединенной таблице: {len(final_df)}")
 
 # создаем новую колонку и помещаем туда выручку
@@ -169,3 +249,12 @@ final_report["total_revenue"] = final_report["total_revenue"].round(2)
 
 os.makedirs("reports", exist_ok=True)
 final_report.to_csv("reports/sales_report.csv", index=False)
+
+# Сохраняем лог ошибок в файл
+if all_errors:
+    with open("reports/errors.log", "w", encoding="utf-8") as f:
+        for error in all_errors:
+            f.write(error + "\n")
+    print("\n⚠ Были найдены ошибки. Подробности в файле errors.log")
+else:
+    print("\n✓ Ошибок не найдено. Все файлы обработаны успешно.")

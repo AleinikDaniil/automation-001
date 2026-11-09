@@ -1,0 +1,6 @@
+Файл 'store_01_minsk_center.csv', строка 6: пустые поля (quantity). Данные: {'date': '2026-11-03', 'product': 'Headphones', 'quantity': nan, 'price': 60.0}
+Файл 'store_02_galleria.csv', строка 7: пустые поля (price). Данные: {'date': '2026-11-04', 'product': 'Laptop', 'quantity': '1', 'price': nan}
+Файл 'store_02_galleria.csv', строка 8: пустое название товара (пробелы). Данные: {'date': '2026-11-04', 'product': '', 'quantity': '1', 'price': 10.0}
+Файл 'store_02_galleria.csv', строка 5: quantity не является числом. Данные: {'date': '2026-11-03', 'product': 'Monitor', 'quantity': nan, 'price': 220.0}
+Файл 'store_03_south.csv', строка 7: quantity <= 0 (-1). Данные: {'date': '2026-11-04', 'product': 'Monitor', 'quantity': -1, 'price': 215.0}
+Файл 'store_03_south.csv', строка 8: price не является числом. Данные: {'date': '2026-11-04', 'product': 'Webcam', 'quantity': 1, 'price': nan}
